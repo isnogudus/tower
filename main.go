@@ -20,7 +20,8 @@ import (
 )
 
 const usage = `usage: tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
-             [-r count] [-w window] [-t grace] [-l syslog|stderr] [--] command [args...]
+             [-r count] [-w window] [-t grace] [-l syslog|stderr] [-o inherit|syslog]
+             [-T tag] [--] command [args...]
 
 tower runs command, restarts it when it dies, and gives up when told to.
 
@@ -35,6 +36,9 @@ tower runs command, restarts it when it dies, and gives up when told to.
   -w window   window for -r (default 1h)
   -t grace    time between SIGTERM and SIGKILL when stopping (default 5s)
   -l where    log tower's own messages to syslog or stderr (default syslog)
+  -o where    output of command: inherit tower's stdout/stderr, or line by
+              line to syslog (default inherit)
+  -T tag      syslog tag for -l and -o (default tower)
   -v          print version and exit
 
 tower ends with 0 after SIGTERM/SIGINT, with the command's exit code when it
@@ -47,6 +51,8 @@ var version = "dev"
 type cli struct {
 	Options
 	logTo string
+	outTo string
+	tag   string
 }
 
 func parseArgs(args []string) (cli, error) {
@@ -64,6 +70,8 @@ func parseArgs(args []string) (cli, error) {
 		window   = fs.Duration("w", time.Hour, "")
 		grace    = fs.Duration("t", 5*time.Second, "")
 		logTo    = fs.String("l", "syslog", "")
+		outTo    = fs.String("o", "inherit", "")
+		tag      = fs.String("T", "tower", "")
 		showVer  = fs.Bool("v", false, "")
 	)
 	if err := fs.Parse(args); err != nil {
@@ -96,6 +104,12 @@ func parseArgs(args []string) (cli, error) {
 	if *logTo != "syslog" && *logTo != "stderr" {
 		return cli{}, errors.New("-l must be syslog or stderr")
 	}
+	if *outTo != "inherit" && *outTo != "syslog" {
+		return cli{}, errors.New("-o must be inherit or syslog")
+	}
+	if *tag == "" {
+		return cli{}, errors.New("-T must not be empty")
+	}
 
 	var cred *syscall.Credential
 	if *userName != "" {
@@ -122,6 +136,8 @@ func parseArgs(args []string) (cli, error) {
 			},
 		},
 		logTo: *logTo,
+		outTo: *outTo,
+		tag:   *tag,
 	}, nil
 }
 
@@ -172,19 +188,28 @@ func main() {
 		return
 	}
 
-	var logw io.Writer = os.Stderr
-	if c.logTo == "syslog" {
-		w, err := syslog.New(syslog.LOG_DAEMON|syslog.LOG_NOTICE, "tower")
+	// One connection for both: tower's own messages at notice, the output
+	// of the command at info, under the same tag.
+	c.Log = os.Stderr
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	if c.logTo == "syslog" || c.outTo == "syslog" {
+		w, err := syslog.New(syslog.LOG_DAEMON|syslog.LOG_NOTICE, c.tag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "tower: syslog unavailable, logging to stderr: %v\n", err)
 		} else {
 			defer w.Close()
-			logw = w
+			if c.logTo == "syslog" {
+				c.Log = w
+			}
+			if c.outTo == "syslog" {
+				// One writer for both streams keeps their order.
+				out := newLineWriter(func(line string) { _ = w.Info(line) })
+				c.Stdout = out
+				c.Stderr = out
+			}
 		}
 	}
-	c.Log = logw
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
 
 	// SIGTERM/SIGINT stop tower and the child; SIGHUP goes to the child.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

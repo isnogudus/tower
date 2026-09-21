@@ -17,6 +17,8 @@
 .Op Fl w Ar window
 .Op Fl t Ar grace
 .Op Fl l Cm syslog | stderr
+.Op Fl o Cm inherit | syslog
+.Op Fl T Ar tag
 .Op Fl -
 .Ar command
 .Op Ar argument ...
@@ -152,10 +154,45 @@ and priority
 or to standard error.
 The default is
 .Cm syslog .
-The output of
+.It Fl o Cm inherit | syslog
+Where the output of
 .Ar command
-itself always goes to the standard output and standard error of
-.Nm .
+goes.
+With
+.Cm inherit
+it is the standard output and standard error of
+.Nm ;
+what happens to it is up to the caller.
+With
+.Cm syslog
+.Nm
+reads both and writes them line by line to
+.Xr syslogd 8
+with facility
+.Dv daemon
+and priority
+.Dv info ,
+in the order they were written.
+Empty lines are dropped, lines longer than 4096 bytes are split, and an
+unfinished last line is written when
+.Ar command
+exits.
+The default is
+.Cm inherit .
+.It Fl T Ar tag
+The tag of all messages sent to
+.Xr syslogd 8 ,
+by
+.Fl l
+and by
+.Fl o .
+With the name of the service as
+.Ar tag ,
+restarts and the output of
+.Ar command
+are found under one name, and several instances can be told apart.
+The default is
+.Cm tower .
 .It Fl v
 Print the version and exit.
 .El

@@ -29,7 +29,9 @@ is all tower does.
   grace period, always to the whole process group), then tower exits 0.
   SIGHUP is passed on to the child.
 - One log line per start, exit and restart, with exit code, signal and
-  runtime; syslog (facility `daemon`) by default.
+  runtime; syslog (facility `daemon`) by default. With `-o syslog` the
+  child's output goes there too, line by line, and `-T` puts both under
+  the service's name — no `logger` pipe, no `daemon -S`.
 - No dependencies outside the Go standard library. Static binary,
   cross-compiles for OpenBSD, FreeBSD and Linux with `make build-all`.
 
@@ -37,7 +39,8 @@ is all tower does.
 
 ```
 tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
-      [-r count] [-w window] [-t grace] [-l syslog|stderr] [--] command [args...]
+      [-r count] [-w window] [-t grace] [-l syslog|stderr] [-o inherit|syslog]
+      [-T tag] [--] command [args...]
 ```
 
 | Flag | Meaning | Default |
@@ -53,6 +56,8 @@ tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
 | `-w window` | window for `-r` | `1h` |
 | `-t grace` | time between SIGTERM and SIGKILL when stopping | `5s` |
 | `-l where` | tower's own messages to `syslog` or `stderr` | `syslog` |
+| `-o where` | output of the child: `inherit` tower's stdout/stderr, or line by line to `syslog` (`daemon.info`) | `inherit` |
+| `-T tag` | syslog tag for `-l` and `-o` | `tower` |
 | `-v` | print version | |
 
 tower exits with `0` after SIGTERM/SIGINT, with the child's exit code when
@@ -81,7 +86,7 @@ As a service — OpenBSD, `/etc/rc.d/e3dc_mqtt`:
 ```sh
 #!/bin/ksh
 daemon="/usr/local/sbin/tower"
-daemon_flags="-- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
+daemon_flags="-T e3dc_mqtt -o syslog -- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
 . /etc/rc.d/rc.subr
 rc_bg=YES
 rc_reload=YES

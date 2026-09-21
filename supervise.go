@@ -98,6 +98,9 @@ func runOnce(ctx context.Context, o Options, logf func(string, ...any)) exitInfo
 	cmd.Stdin = nil
 	cmd.Stdout = o.Stdout
 	cmd.Stderr = o.Stderr
+	// Output that is not a file goes through a pipe. A grandchild may keep
+	// it open after the child is gone; do not wait for that forever.
+	cmd.WaitDelay = o.Grace
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:    true, // own process group: signals reach grandchildren too
 		Credential: o.Cred,
@@ -115,6 +118,7 @@ func runOnce(ctx context.Context, o Options, logf func(string, ...any)) exitInfo
 	for {
 		select {
 		case err := <-done:
+			flush(o.Stdout, o.Stderr)
 			return classify(err)
 		case sig := <-o.Forward:
 			if s, ok := sig.(syscall.Signal); ok {
@@ -122,6 +126,7 @@ func runOnce(ctx context.Context, o Options, logf func(string, ...any)) exitInfo
 			}
 		case <-ctx.Done():
 			terminate(pgid, o.Grace, done, logf)
+			flush(o.Stdout, o.Stderr)
 			return exitInfo{}
 		}
 	}
@@ -142,10 +147,20 @@ func terminate(pgid int, grace time.Duration, done <-chan error, logf func(strin
 	<-done
 }
 
+// flush hands out what is left of an unfinished last line of the child.
+func flush(writers ...io.Writer) {
+	for _, w := range writers {
+		if f, ok := w.(interface{ Flush() }); ok {
+			f.Flush()
+		}
+	}
+}
+
 // classify turns the result of cmd.Wait into exit code and signal. A
 // child killed by a signal gets 128+signal number, as in the shell.
 func classify(err error) exitInfo {
-	if err == nil {
+	if err == nil || errors.Is(err, exec.ErrWaitDelay) {
+		// ErrWaitDelay: exited with 0, only the output pipe was still open.
 		return exitInfo{code: 0}
 	}
 	var ee *exec.ExitError

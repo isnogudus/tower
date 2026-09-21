@@ -18,6 +18,9 @@
 #   /etc/dns-updater/IPV6        true
 # The directory is read on every start; rcctl restart applies a change.
 #
+# tower writes its own messages and the output of dns-updater to syslog
+# (-o syslog), both tagged with the name of the service (-T).
+#
 # Several updaters side by side (IPv4 and IPv6, several providers): one
 # symlink per instance, dns_updater_<instance>. It reads the subdirectory
 # named after the instance, so each one has its own configuration and its
@@ -32,8 +35,7 @@ _instance=${_instance#dns_updater}
 _instance=${_instance#_}
 
 daemon="/usr/local/sbin/tower"
-daemon_flags="-e /etc/dns-updater${_instance:+/${_instance}} -- /usr/local/bin/dns-updater -u _dnsupdater -g _dnsupdater"
-daemon_logger="daemon.info"
+daemon_flags="-T ${0##*/} -o syslog -e /etc/dns-updater${_instance:+/${_instance}} -- /usr/local/bin/dns-updater -u _dnsupdater -g _dnsupdater"
 
 . /etc/rc.d/rc.subr
 

@@ -73,6 +73,24 @@ func TestParseArgsFlags(t *testing.T) {
 	}
 }
 
+func TestParseArgsOutput(t *testing.T) {
+	o, err := parseArgs([]string{"cmd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.logTo != "syslog" || o.outTo != "inherit" || o.tag != "tower" {
+		t.Errorf("defaults: -l %q -o %q -T %q", o.logTo, o.outTo, o.tag)
+	}
+
+	o, err = parseArgs([]string{"-o", "syslog", "-T", "dns_updater_v4", "--", "cmd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.outTo != "syslog" || o.tag != "dns_updater_v4" {
+		t.Errorf("-o %q -T %q", o.outTo, o.tag)
+	}
+}
+
 func TestParseArgsErrors(t *testing.T) {
 	cases := [][]string{
 		{},                                // no command
@@ -84,6 +102,8 @@ func TestParseArgsErrors(t *testing.T) {
 		{"-t", "0s", "cmd"},               // grace 0
 		{"-u", "no-such-user-xyz", "cmd"}, // unknown user
 		{"-q", "cmd"},                     // unknown flag
+		{"-o", "file", "cmd"},             // unknown output target
+		{"-T", "", "cmd"},                 // empty tag
 	}
 	for _, c := range cases {
 		if _, err := parseArgs(c); err == nil {

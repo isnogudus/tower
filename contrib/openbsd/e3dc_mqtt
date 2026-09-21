@@ -4,10 +4,12 @@
 # Copy to /etc/rc.d/e3dc_mqtt, then: rcctl enable e3dc_mqtt
 #
 # Override the flags in /etc/rc.conf.local, e.g.:
-#   e3dc_mqtt_flags="-u _e3dc -r 10 -- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
+#   e3dc_mqtt_flags="-T e3dc_mqtt -o syslog -u _e3dc -r 10 -- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
 
 daemon="/usr/local/sbin/tower"
-daemon_flags="-- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
+# -T/-o syslog: tower's messages and the output of e3dc-mqtt go to syslog
+# under the name of the service.
+daemon_flags="-T e3dc_mqtt -o syslog -- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
 
 . /etc/rc.d/rc.subr
 

@@ -24,10 +24,11 @@ load_rc_config $name
 pidfile="/var/run/${name}.pid"
 procname="/usr/local/sbin/tower"
 
-# daemon(8) only detaches and writes the pid file (no -r);
-# restarts are done by tower.
+# daemon(8) only detaches and writes the pid file (no -r); restarts are
+# done by tower, and -T/-o syslog sends the output of e3dc-mqtt to syslog
+# under the name of the service (daemon -f would discard it).
 command="/usr/sbin/daemon"
-command_args="-f -p ${pidfile} ${procname} ${e3dc_mqtt_tower_flags} -u ${e3dc_mqtt_user} -- /usr/local/bin/e3dc-mqtt -config ${e3dc_mqtt_config}"
+command_args="-f -p ${pidfile} ${procname} -T ${name} -o syslog ${e3dc_mqtt_tower_flags} -u ${e3dc_mqtt_user} -- /usr/local/bin/e3dc-mqtt -config ${e3dc_mqtt_config}"
 
 extra_commands="reload"
 reload_cmd="e3dc_mqtt_reload"
