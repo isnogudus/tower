@@ -10,22 +10,28 @@
 #
 # The configuration is an environment directory read by tower (-e), one
 # file per variable as with chpst -e, so the token stays out of ps(1):
-#   /etc/dns-updater/dns_updater/INTERFACE   vio0
-#   /etc/dns-updater/dns_updater/PROVIDER    ipv64
-#   /etc/dns-updater/dns_updater/DOMAIN      myhost.example.com
-#   /etc/dns-updater/dns_updater/TOKEN       ...           (mode 0600)
-#   /etc/dns-updater/dns_updater/IPV6        true
+#   /etc/dns-updater/INTERFACE   vio0
+#   /etc/dns-updater/PROVIDER    ipv64
+#   /etc/dns-updater/DOMAIN      myhost.example.com
+#   /etc/dns-updater/TOKEN       ...           (mode 0600)
+#   /etc/dns-updater/IPV6        true
 # The directory is read on every start; rcctl restart applies a change.
 #
 # Several updaters side by side (IPv4 and IPv6, several providers): one
-# symlink per instance. The directory is named after the service, so each
-# instance has its own configuration and its own command line:
+# symlink per instance, dns_updater_<instance>. It reads the subdirectory
+# named after the instance, so each one has its own configuration and its
+# own command line (tower skips subdirectories, so both forms can coexist):
 #   ln -s dns_updater /etc/rc.d/dns_updater_v4
-#   mkdir /etc/dns-updater/dns_updater_v4
+#   mkdir /etc/dns-updater/v4
 #   rcctl enable dns_updater_v4
 
+# dns_updater -> /etc/dns-updater, dns_updater_v4 -> /etc/dns-updater/v4
+_instance=${0##*/}
+_instance=${_instance#dns_updater}
+_instance=${_instance#_}
+
 daemon="/usr/local/sbin/tower"
-daemon_flags="-e /etc/dns-updater/${0##*/} -- /usr/local/bin/dns-updater --chroot /var/empty -u _dnsupdater -g _dnsupdater"
+daemon_flags="-e /etc/dns-updater${_instance:+/${_instance}} -- /usr/local/bin/dns-updater --chroot /var/empty -u _dnsupdater -g _dnsupdater"
 daemon_logger="daemon.info"
 
 . /etc/rc.d/rc.subr
