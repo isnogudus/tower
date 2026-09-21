@@ -9,8 +9,8 @@
 #   TOKEN=...
 #
 # dns-updater reads its settings from flags or environment; the token comes
-# from the env file so it does not show up in ps(1). It does its own chroot
-# and privilege drop, so tower runs as root.
+# from the env file so it does not show up in ps(1). It does its own
+# privilege drop, so tower runs as root.
 #
 # PROVIDE: dns_updater
 # REQUIRE: NETWORKING
@@ -40,6 +40,6 @@ ipv6_flag=""
 checkyesno dns_updater_ipv6 && ipv6_flag="-6"
 
 command="/usr/sbin/daemon"
-command_args="-f -p ${pidfile} ${procname} ${dns_updater_tower_flags} -- /usr/local/bin/dns-updater -i ${dns_updater_interface} -p ${dns_updater_provider} -D ${dns_updater_domain} ${ipv6_flag} --chroot /var/empty -u ${dns_updater_user} -g ${dns_updater_user}"
+command_args="-f -p ${pidfile} ${procname} ${dns_updater_tower_flags} -- /usr/local/bin/dns-updater -i ${dns_updater_interface} -p ${dns_updater_provider} -D ${dns_updater_domain} ${ipv6_flag} -u ${dns_updater_user} -g ${dns_updater_user}"
 
 run_rc_command "$1"

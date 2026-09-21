@@ -92,7 +92,7 @@ FreeBSD, `/usr/local/etc/rc.d/e3dc_mqtt`: `daemon(8)` detaches and writes
 the pid file, tower does the restarting. Complete scripts for both systems
 are in [`contrib/`](contrib/), for two services: `e3dc_mqtt`, a poller
 that exits with distinct codes for configuration and connection errors,
-and `dns_updater`, a daemon that does its own chroot and privilege drop
+and `dns_updater`, a daemon that does its own privilege drop
 and therefore runs under a root tower.
 
 The rc.d script carries the service's name; tower itself only shows up in

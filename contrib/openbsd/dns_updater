@@ -3,8 +3,9 @@
 # rc.d script for dns-updater supervised by tower (OpenBSD).
 # Copy to /etc/rc.d/dns_updater, then: rcctl enable dns_updater
 #
-# dns-updater does its own chroot and privilege drop, so tower runs as
-# root and the child drops to _dnsupdater itself. It exits 1 on bad
+# dns-updater drops its privileges itself (and then restricts itself with
+# unveil and pledge), so tower runs as root. No chroot: in /var/empty the
+# resolver finds no resolv.conf and TLS no CA bundle. It exits 1 on bad
 # arguments or a failed sandbox (final, tower stops) and retries provider
 # errors internally; anything else that kills it is restarted.
 #
@@ -31,7 +32,7 @@ _instance=${_instance#dns_updater}
 _instance=${_instance#_}
 
 daemon="/usr/local/sbin/tower"
-daemon_flags="-e /etc/dns-updater${_instance:+/${_instance}} -- /usr/local/bin/dns-updater --chroot /var/empty -u _dnsupdater -g _dnsupdater"
+daemon_flags="-e /etc/dns-updater${_instance:+/${_instance}} -- /usr/local/bin/dns-updater -u _dnsupdater -g _dnsupdater"
 daemon_logger="daemon.info"
 
 . /etc/rc.d/rc.subr
