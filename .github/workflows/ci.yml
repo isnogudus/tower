@@ -24,4 +24,7 @@ jobs:
       - name: lint man page
         run: |
           sudo apt-get install -y -qq mandoc >/dev/null
-          mandoc -Tlint tower.8 2>&1 | grep -v 'referenced manual not found' | grep -q . && exit 1 || true
+          # Referenced pages of other systems are not installed here.
+          out=$(mandoc -Tlint tower.8 2>&1 | grep -v 'referenced manual not found' || true)
+          echo "$out"
+          test -z "$out"
