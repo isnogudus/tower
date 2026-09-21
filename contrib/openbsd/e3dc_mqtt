@@ -1,0 +1,19 @@
+#!/bin/ksh
+#
+# rc.d script for e3dc-mqtt supervised by tower (OpenBSD).
+# Copy to /etc/rc.d/e3dc_mqtt, then: rcctl enable e3dc_mqtt
+#
+# Override the flags in /etc/rc.conf.local, e.g.:
+#   e3dc_mqtt_flags="-u _e3dc -r 10 -- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
+
+daemon="/usr/local/sbin/tower"
+daemon_flags="-- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
+
+. /etc/rc.d/rc.subr
+
+# tower stays in the foreground; rc.d puts it in the background.
+rc_bg=YES
+# rcctl reload sends SIGHUP to tower, tower passes it on to the child.
+rc_reload=YES
+
+rc_cmd $1

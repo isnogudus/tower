@@ -1,0 +1,233 @@
+.Dd September 21, 2026
+.Dt TOWER 8
+.Os
+.Sh NAME
+.Nm tower
+.Nd run a command and restart it when it dies
+.Sh SYNOPSIS
+.Nm
+.Op Fl u Ar user
+.Op Fl c Ar dir
+.Op Fl x Ar codes
+.Op Fl b Ar initial
+.Op Fl m Ar max
+.Op Fl s Ar stable
+.Op Fl r Ar count
+.Op Fl w Ar window
+.Op Fl t Ar grace
+.Op Fl l Cm syslog | stderr
+.Op Fl -
+.Ar command
+.Op Ar argument ...
+.Nm
+.Fl v
+.Sh DESCRIPTION
+.Nm
+supervises exactly one
+.Ar command :
+it starts it, restarts it after it exits with an error, waits longer before
+each further restart, and stops restarting when the exit code says so or when
+failures pile up.
+There is no configuration file and no control socket; everything is given on
+the command line, so the rc.d script of the supervised service is its
+configuration.
+.Pp
+The
+.Ar command
+runs in its own process group, so signals sent by
+.Nm
+also reach its descendants.
+A
+.Fl -
+ends option processing and is needed when
+.Ar command
+takes options of its own.
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl u Ar user
+Run
+.Ar command
+as
+.Ar user ,
+given by name or numeric uid, with the primary and supplementary groups
+listed for it in the password database.
+By default the command inherits the user of
+.Nm .
+.It Fl c Ar dir
+Run
+.Ar command
+with
+.Ar dir
+as its working directory.
+.It Fl x Ar codes
+A comma-separated list of exit codes that end supervision.
+When
+.Ar command
+exits with one of them,
+.Nm
+does not restart it and exits with the same code.
+The default is
+.Cm 0,1 :
+a clean exit and, by convention, a configuration error.
+.It Fl b Ar initial
+The wait before the first restart.
+Each further restart after a short run doubles the wait, up to
+.Fl m .
+The default is
+.Cm 1s .
+.It Fl m Ar max
+The longest wait before a restart.
+The default is
+.Cm 1m .
+.It Fl s Ar stable
+A run at least this long counts as stable: the next restart waits
+.Fl b
+again instead of doubling the previous wait.
+The default is
+.Cm 1m .
+.It Fl r Ar count
+Give up after
+.Ar count
+restarts within
+.Fl w .
+.Nm
+then exits with the last exit code of
+.Ar command .
+The default of
+.Cm 0
+never gives up.
+.It Fl w Ar window
+The window for
+.Fl r .
+The default is
+.Cm 1h .
+.It Fl t Ar grace
+When stopping, the time between
+.Dv SIGTERM
+and
+.Dv SIGKILL .
+The default is
+.Cm 5s .
+.It Fl l Cm syslog | stderr
+Where
+.Nm
+writes its own messages: to
+.Xr syslogd 8
+with facility
+.Dv daemon
+and priority
+.Dv notice ,
+or to standard error.
+The default is
+.Cm syslog .
+The output of
+.Ar command
+itself always goes to the standard output and standard error of
+.Nm .
+.It Fl v
+Print the version and exit.
+.El
+.Pp
+Durations take the form accepted by Go, for example
+.Cm 500ms ,
+.Cm 30s ,
+.Cm 2m
+or
+.Cm 1h30m .
+.Sh SIGNALS
+.Bl -tag -width SIGTERM
+.It Dv SIGTERM , Dv SIGINT
+Stop:
+.Nm
+sends
+.Dv SIGTERM
+to the process group of
+.Ar command ,
+waits up to
+.Fl t ,
+sends
+.Dv SIGKILL
+if needed, and exits with status 0.
+A stop that arrives while
+.Nm
+is waiting for a restart cancels the restart.
+.It Dv SIGHUP
+Passed on to the process group of
+.Ar command ,
+for services that reload their configuration on it.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with 0 after a stop by signal; with the exit code of
+.Ar command
+when it stops restarting, either because the code is listed in
+.Fl x
+or because
+.Fl r
+was reached; with 127 when
+.Ar command
+cannot be started; and with 2 on invalid arguments.
+.Pp
+A
+.Ar command
+killed by a signal is treated as having exited with 128 plus the signal
+number, as in the shell, and is therefore restarted unless that number is
+listed in
+.Fl x .
+.Sh EXAMPLES
+Try it in the foreground with a command that always fails:
+.Bd -literal -offset indent
+$ tower -l stderr -b 1s -m 10s -r 3 -w 1m -- sh -c 'echo hi; exit 4'
+.Ed
+.Pp
+An
+.Ox
+rc.d script for a service that exits with 1 on a configuration error and
+with other codes on lost connections:
+.Bd -literal -offset indent
+#!/bin/ksh
+daemon="/usr/local/sbin/tower"
+daemon_flags="-- /usr/local/bin/e3dc-mqtt -config /etc/e3dc-mqtt.toml"
+\&. /etc/rc.d/rc.subr
+rc_bg=YES
+rc_reload=YES
+rc_cmd $1
+.Ed
+.Pp
+On
+.Fx ,
+let
+.Xr daemon 8
+detach and write the pid file, and let
+.Nm
+do the restarting:
+.Bd -literal -offset indent
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} /usr/local/sbin/tower -- /usr/local/bin/e3dc-mqtt"
+procname="/usr/local/sbin/tower"
+.Ed
+.Sh SEE ALSO
+.Xr daemon 8 ,
+.Xr rc.d 8 ,
+.Xr rcctl 8 ,
+.Xr syslogd 8
+.Sh AUTHORS
+.An Markus Teichmann Aq Mt markus.teichmann@go-21.de
+.Pp
+The name comes from the I/O tower in the film
+.Em Tron ,
+the place where programs get back in touch.
+.Sh CAVEATS
+As long as
+.Nm
+runs, the service looks alive to
+.Xr rcctl 8
+and
+.Xr service 8 ,
+even while
+.Ar command
+is dead and waiting for its next restart.
+Set
+.Fl r
+where that would be misleading, and read the log.

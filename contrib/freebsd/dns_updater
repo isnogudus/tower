@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# rc.d script for dns-updater supervised by tower (FreeBSD).
+# Copy to /usr/local/etc/rc.d/dns_updater, then in /etc/rc.conf:
+#   dns_updater_enable="YES"
+#   dns_updater_interface="em0"
+#   dns_updater_domain="myhost.example.com"
+# and the token in /usr/local/etc/dns-updater.env (mode 0600):
+#   TOKEN=...
+#
+# dns-updater reads its settings from flags or environment; the token comes
+# from the env file so it does not show up in ps(1). It does its own chroot
+# and privilege drop, so tower runs as root.
+#
+# PROVIDE: dns_updater
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="dns_updater"
+rcvar="dns_updater_enable"
+
+load_rc_config $name
+
+: ${dns_updater_enable:="NO"}
+: ${dns_updater_interface:="em0"}
+: ${dns_updater_provider:="ipv64"}
+: ${dns_updater_domain:=""}
+: ${dns_updater_ipv6:="YES"}
+: ${dns_updater_user:="_dnsupdater"}
+: ${dns_updater_env_file:="/usr/local/etc/dns-updater.env"}
+# Flags for tower itself (backoff, giving up, exit codes).
+: ${dns_updater_tower_flags:="-x 0,1"}
+
+pidfile="/var/run/${name}.pid"
+procname="/usr/local/sbin/tower"
+
+ipv6_flag=""
+checkyesno dns_updater_ipv6 && ipv6_flag="-6"
+
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} ${procname} ${dns_updater_tower_flags} -- /usr/local/bin/dns-updater -i ${dns_updater_interface} -p ${dns_updater_provider} -D ${dns_updater_domain} ${ipv6_flag} --chroot /var/empty -u ${dns_updater_user} -g ${dns_updater_user}"
+
+run_rc_command "$1"

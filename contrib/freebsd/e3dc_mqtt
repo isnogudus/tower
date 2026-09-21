@@ -1,0 +1,39 @@
+#!/bin/sh
+#
+# rc.d script for e3dc-mqtt supervised by tower (FreeBSD).
+# Copy to /usr/local/etc/rc.d/e3dc_mqtt, then in /etc/rc.conf:
+#   e3dc_mqtt_enable="YES"
+#
+# PROVIDE: e3dc_mqtt
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="e3dc_mqtt"
+rcvar="e3dc_mqtt_enable"
+
+load_rc_config $name
+
+: ${e3dc_mqtt_enable:="NO"}
+: ${e3dc_mqtt_config:="/usr/local/etc/e3dc-mqtt.toml"}
+: ${e3dc_mqtt_user:="root"}
+# Flags for tower itself (backoff, giving up, exit codes).
+: ${e3dc_mqtt_tower_flags:="-x 0,1"}
+
+pidfile="/var/run/${name}.pid"
+procname="/usr/local/sbin/tower"
+
+# daemon(8) only detaches and writes the pid file (no -r);
+# restarts are done by tower.
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} ${procname} ${e3dc_mqtt_tower_flags} -u ${e3dc_mqtt_user} -- /usr/local/bin/e3dc-mqtt -config ${e3dc_mqtt_config}"
+
+extra_commands="reload"
+reload_cmd="e3dc_mqtt_reload"
+e3dc_mqtt_reload() {
+	# SIGHUP to tower, tower passes it on to the child.
+	kill -HUP $(check_pidfile ${pidfile} ${procname})
+}
+
+run_rc_command "$1"

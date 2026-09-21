@@ -1,0 +1,23 @@
+#!/bin/ksh
+#
+# rc.d script for dns-updater supervised by tower (OpenBSD).
+# Copy to /etc/rc.d/dns_updater, then: rcctl enable dns_updater
+#
+# dns-updater does its own chroot and privilege drop, so tower runs as
+# root and the child drops to _dnsupdater itself. It exits 1 on bad
+# arguments or a failed sandbox (final, tower stops) and retries provider
+# errors internally; anything else that kills it is restarted.
+#
+# The token is visible in ps(1) this way. Keep the flags in
+# /etc/rc.conf.local if you prefer them out of the script:
+#   dns_updater_flags="-- /usr/local/bin/dns-updater -i vio0 -p ipv64 -D myhost.example.com -t TOKEN -6 --chroot /var/empty -u _dnsupdater -g _dnsupdater"
+
+daemon="/usr/local/sbin/tower"
+daemon_flags="-- /usr/local/bin/dns-updater -i vio0 -p ipv64 -D myhost.example.com -t TOKEN -6 --chroot /var/empty -u _dnsupdater -g _dnsupdater"
+
+. /etc/rc.d/rc.subr
+
+rc_bg=YES
+rc_reload=NO
+
+rc_cmd $1
