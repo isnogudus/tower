@@ -15,6 +15,7 @@ import (
 type Options struct {
 	Cmd    []string            // program and arguments of the child
 	Dir    string              // working directory of the child ("" = inherited)
+	EnvDir string              // environment directory, read on every start ("" = none)
 	Cred   *syscall.Credential // user/groups of the child (nil = inherited)
 	Grace  time.Duration       // time between SIGTERM and SIGKILL when stopping
 	Policy Policy
@@ -87,6 +88,13 @@ func Run(ctx context.Context, o Options) int {
 func runOnce(ctx context.Context, o Options, logf func(string, ...any)) exitInfo {
 	cmd := exec.Command(o.Cmd[0], o.Cmd[1:]...)
 	cmd.Dir = o.Dir
+	if o.EnvDir != "" {
+		env, err := envFromDir(os.Environ(), o.EnvDir)
+		if err != nil {
+			return exitInfo{err: fmt.Errorf("environment directory: %w", err)}
+		}
+		cmd.Env = env
+	}
 	cmd.Stdin = nil
 	cmd.Stdout = o.Stdout
 	cmd.Stderr = o.Stderr

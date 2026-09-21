@@ -36,7 +36,7 @@ is all tower does.
 ## Usage
 
 ```
-tower [-u user] [-c dir] [-x codes] [-b initial] [-m max] [-s stable]
+tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
       [-r count] [-w window] [-t grace] [-l syslog|stderr] [--] command [args...]
 ```
 
@@ -44,6 +44,7 @@ tower [-u user] [-c dir] [-x codes] [-b initial] [-m max] [-s stable]
 |------|---------|---------|
 | `-u user` | run the child as this user (name or uid), groups from passwd | inherited |
 | `-c dir` | working directory of the child | inherited |
+| `-e dir` | environment directory as in `chpst -e`/`envdir`, read on every start | none |
 | `-x codes` | exit codes that end supervision, comma-separated | `0,1` |
 | `-b initial` | first wait before a restart | `1s` |
 | `-m max` | longest wait | `1m` |
@@ -56,6 +57,12 @@ tower [-u user] [-c dir] [-x codes] [-b initial] [-m max] [-s stable]
 
 tower exits with `0` after SIGTERM/SIGINT, with the child's exit code when
 it stops restarting, and with `127` when the child cannot be started.
+
+With `-e dir` every file in `dir` sets the variable named after it to the
+first line of its content; an empty file removes the variable. The
+directory is read again on every start, so a changed value takes effect
+with the next restart. A directory that cannot be read counts as a failed
+start (`127`).
 
 The child runs in its own process group, so signals also reach
 grandchildren. A child killed by a signal counts as `128 + signal number`,

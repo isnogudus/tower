@@ -19,13 +19,14 @@ import (
 	"time"
 )
 
-const usage = `usage: tower [-u user] [-c dir] [-x codes] [-b initial] [-m max] [-s stable]
+const usage = `usage: tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
              [-r count] [-w window] [-t grace] [-l syslog|stderr] [--] command [args...]
 
 tower runs command, restarts it when it dies, and gives up when told to.
 
   -u user     run command as this user (name or uid); groups from passwd
   -c dir      working directory of command
+  -e dir      environment directory as in chpst/envdir, read on every start
   -x codes    exit codes that end supervision, comma-separated (default 0,1)
   -b initial  first wait before a restart (default 1s)
   -m max      longest wait before a restart (default 1m)
@@ -54,6 +55,7 @@ func parseArgs(args []string) (cli, error) {
 	var (
 		userName = fs.String("u", "", "")
 		dir      = fs.String("c", "", "")
+		envDir   = fs.String("e", "", "")
 		codes    = fs.String("x", "0,1", "")
 		initial  = fs.Duration("b", time.Second, "")
 		maxWait  = fs.Duration("m", time.Minute, "")
@@ -105,10 +107,11 @@ func parseArgs(args []string) (cli, error) {
 
 	return cli{
 		Options: Options{
-			Cmd:   cmd,
-			Dir:   *dir,
-			Cred:  cred,
-			Grace: *grace,
+			Cmd:    cmd,
+			Dir:    *dir,
+			EnvDir: *envDir,
+			Cred:   cred,
+			Grace:  *grace,
 			Policy: Policy{
 				NoRestart: noRestart,
 				Initial:   *initial,

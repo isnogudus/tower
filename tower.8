@@ -8,6 +8,7 @@
 .Nm
 .Op Fl u Ar user
 .Op Fl c Ar dir
+.Op Fl e Ar dir
 .Op Fl x Ar codes
 .Op Fl b Ar initial
 .Op Fl m Ar max
@@ -60,6 +61,36 @@ Run
 with
 .Ar dir
 as its working directory.
+.It Fl e Ar dir
+Change the environment of
+.Ar command
+by the files in
+.Ar dir ,
+as
+.Xr chpst 8
+and
+.Xr envdir 8
+do: each file sets the variable named after it to the first line of its
+content, with trailing spaces and tabs removed and NUL bytes turned into
+newlines.
+An empty file removes the variable.
+Files whose name starts with a dot, and directories, are skipped.
+.Ar dir
+is read on every start, so a change takes effect with the next restart.
+It is read by
+.Nm
+itself, which keeps its own user;
+.Fl u
+applies to
+.Ar command
+only.
+The files therefore need to be readable by the user of
+.Nm ,
+not by
+.Ar user .
+If it cannot be read,
+.Ar command
+counts as not startable.
 .It Fl x Ar codes
 A comma-separated list of exit codes that end supervision.
 When
@@ -208,7 +239,9 @@ command_args="-f -p ${pidfile} /usr/local/sbin/tower -- /usr/local/bin/e3dc-mqtt
 procname="/usr/local/sbin/tower"
 .Ed
 .Sh SEE ALSO
+.Xr chpst 8 ,
 .Xr daemon 8 ,
+.Xr envdir 8 ,
 .Xr rc.d 8 ,
 .Xr rcctl 8 ,
 .Xr syslogd 8

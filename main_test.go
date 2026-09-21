@@ -48,13 +48,16 @@ func TestParseArgsCommandWithoutSeparator(t *testing.T) {
 }
 
 func TestParseArgsFlags(t *testing.T) {
-	o, err := parseArgs([]string{"-c", "/var/empty", "-x", "0,1,2", "-b", "500ms", "-m", "30s",
+	o, err := parseArgs([]string{"-c", "/var/empty", "-e", "/etc/tower/env", "-x", "0,1,2", "-b", "500ms", "-m", "30s",
 		"-s", "2m", "-r", "10", "-w", "30m", "-t", "10s", "--", "cmd"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if o.Dir != "/var/empty" {
 		t.Errorf("-c: %q", o.Dir)
+	}
+	if o.EnvDir != "/etc/tower/env" {
+		t.Errorf("-e: %q", o.EnvDir)
 	}
 	if !o.Policy.NoRestart[2] {
 		t.Errorf("-x: %v", o.Policy.NoRestart)
