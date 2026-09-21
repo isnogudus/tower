@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - name: build
+        run: |
+          mkdir -p dist
+          for t in openbsd/amd64 openbsd/arm64 freebsd/amd64 freebsd/arm64 \
+                   linux/amd64 linux/arm64 linux/arm; do
+            os=${t%/*}; arch=${t#*/}
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=6 \
+              go build -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o dist/tower-${GITHUB_REF_NAME}-$os-$arch .
+          done
+          cp tower.8 dist/
+          (cd dist && sha256sum * > SHA256SUMS)
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Static binaries for OpenBSD, FreeBSD and Linux, plus the manual page. Verify with SHA256SUMS."

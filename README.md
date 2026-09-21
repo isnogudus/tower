@@ -121,7 +121,10 @@ make uninstall
 
 `make install` builds for the system it runs on; for a router, build on
 your workstation with `make build-openbsd` and copy the binary and
-`tower.8` by hand. FreeBSD 14 and later keep manual pages in `share/man`:
+`tower.8` by hand — or take them from the
+[releases](https://github.com/isnogudus/tower/releases): every `v*` tag is
+built by GitHub Actions for OpenBSD, FreeBSD and Linux (amd64, arm64,
+armv6), with a `SHA256SUMS` file. FreeBSD 14 and later keep manual pages in `share/man`:
 `make install MANDIR=/usr/local/share/man`.
 
 The manual page is [`tower.8`](tower.8) in mdoc(7); `make man` checks it
