@@ -8,12 +8,25 @@
 # arguments or a failed sandbox (final, tower stops) and retries provider
 # errors internally; anything else that kills it is restarted.
 #
-# The token is visible in ps(1) this way. Keep the flags in
-# /etc/rc.conf.local if you prefer them out of the script:
-#   dns_updater_flags="-- /usr/local/bin/dns-updater -i vio0 -p ipv64 -D myhost.example.com -t TOKEN -6 --chroot /var/empty -u _dnsupdater -g _dnsupdater"
+# The configuration is an environment directory read by tower (-e), one
+# file per variable as with chpst -e, so the token stays out of ps(1):
+#   /etc/dns-updater/dns_updater/INTERFACE   vio0
+#   /etc/dns-updater/dns_updater/PROVIDER    ipv64
+#   /etc/dns-updater/dns_updater/DOMAIN      myhost.example.com
+#   /etc/dns-updater/dns_updater/TOKEN       ...           (mode 0600)
+#   /etc/dns-updater/dns_updater/IPV6        true
+# The directory is read on every start; rcctl restart applies a change.
+#
+# Several updaters side by side (IPv4 and IPv6, several providers): one
+# symlink per instance. The directory is named after the service, so each
+# instance has its own configuration and its own command line:
+#   ln -s dns_updater /etc/rc.d/dns_updater_v4
+#   mkdir /etc/dns-updater/dns_updater_v4
+#   rcctl enable dns_updater_v4
 
 daemon="/usr/local/sbin/tower"
-daemon_flags="-- /usr/local/bin/dns-updater -i vio0 -p ipv64 -D myhost.example.com -t TOKEN -6 --chroot /var/empty -u _dnsupdater -g _dnsupdater"
+daemon_flags="-e /etc/dns-updater/${0##*/} -- /usr/local/bin/dns-updater --chroot /var/empty -u _dnsupdater -g _dnsupdater"
+daemon_logger="daemon.info"
 
 . /etc/rc.d/rc.subr
 
