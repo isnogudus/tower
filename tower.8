@@ -19,6 +19,9 @@
 .Op Fl l Cm syslog | stderr
 .Op Fl o Cm inherit | syslog
 .Op Fl T Ar tag
+.Op Fl W Ar file ...
+.Op Fl H Cm hup | restart
+.Op Fl p Ar interval
 .Op Fl -
 .Ar command
 .Op Ar argument ...
@@ -193,6 +196,43 @@ restarts and the output of
 are found under one name, and several instances can be told apart.
 The default is
 .Cm tower .
+.It Fl W Ar file
+Watch
+.Ar file ,
+for example a TLS certificate or its key, and act as set by
+.Fl H
+when it changes.
+May be given several times; the files must exist when
+.Nm
+starts.
+See
+.Sx WATCHING FILES .
+.It Fl H Cm hup | restart
+What to do when a
+.Fl W
+file has changed:
+.Cm hup
+sends
+.Dv SIGHUP
+to
+.Ar command
+itself, not to its process group, as
+.Xr rcctl 8
+does for a reload: for services whose master process reloads its
+certificates on it;
+.Cm restart
+stops
+.Ar command
+as on
+.Dv SIGTERM
+and starts it again right away.
+The default is
+.Cm restart .
+.It Fl p Ar interval
+How often the
+.Fl W
+files are checked.
+The default is 1m.
 .It Fl v
 Print the version and exit.
 .El
@@ -203,6 +243,48 @@ Durations take the form accepted by Go, for example
 .Cm 2m
 or
 .Cm 1h30m .
+.Sh WATCHING FILES
+.Nm
+checks the
+.Fl W
+files every
+.Fl p
+interval.
+A file counts as changed when its device, inode, size or modification
+time differ from the last check, so a file replaced with
+.Xr rename 2 ,
+as ACME clients install certificates, is noticed as well as one rewritten
+in place.
+Symbolic links are followed.
+.Pp
+A change takes effect only once a check finds no further change and every
+watched file exists.
+A certificate and its key that are replaced one after the other thus cause
+one reload, after both, as long as the second follows within one interval;
+the service never sees a certificate without its new key.
+The delay between a change and the reload is one to two intervals.
+.Pp
+A restart for a changed file is not a failure: it happens without a wait,
+does not count against
+.Fl r ,
+and resets the wait before the next restart to
+.Fl b .
+A change while
+.Ar command
+is not running is ignored, since the next start reads the new files
+anyway.
+.Pp
+The checks use
+.Xr stat 2
+only, without
+.Xr kqueue 2
+or inotify, because a file changed through another path, such as by the host
+of a jail, need not emit events on a
+.Xr nullfs 5
+mount.
+Mount the directory holding the files, not the single files: a file
+mount stays bound to the old file after a
+.Xr rename 2 .
 .Sh SIGNALS
 .Bl -tag -width SIGTERM
 .It Dv SIGTERM , Dv SIGINT
@@ -274,6 +356,18 @@ do the restarting:
 command="/usr/sbin/daemon"
 command_args="-f -p ${pidfile} /usr/local/sbin/tower -- /usr/local/bin/e3dc-mqtt"
 procname="/usr/local/sbin/tower"
+.Ed
+.Pp
+In a
+.Fx
+jail that gets its certificates read-only through
+.Xr nullfs 5
+from the host, reload dovecot when the host has installed new ones:
+.Bd -literal -offset indent
+tower -T dovecot -o syslog -H hup \e
+    -W /usr/local/etc/certs/fullchain.pem \e
+    -W /usr/local/etc/certs/privkey.pem \e
+    -- /usr/local/sbin/dovecot -F
 .Ed
 .Sh SEE ALSO
 .Xr chpst 8 ,

@@ -235,3 +235,102 @@ func TestMissingCommandReturnsErrorCode(t *testing.T) {
 		t.Errorf("log should name the reason:\n%s", logbuf.String())
 	}
 }
+
+// waitForLines waits until path holds at least want lines.
+func waitForLines(t *testing.T, path string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(path); err == nil && strings.Count(string(b), "\n") >= want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	b, _ := os.ReadFile(path)
+	t.Fatalf("%s: want %d lines, have %q", path, want, b)
+}
+
+func TestWatchedChangeSendsHUP(t *testing.T) {
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "cert.pem")
+	hups := filepath.Join(dir, "hups")
+	starts := filepath.Join(dir, "starts")
+	if err := os.WriteFile(cert, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Count starts and HUPs; a HUP must not end the child.
+	script := "trap 'echo >> " + hups + "' HUP; echo >> " + starts + "; while :; do sleep 0.05; done"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var logbuf bytes.Buffer // read only after Run returned
+	done := make(chan int, 1)
+	go func() {
+		done <- Run(ctx, Options{
+			Cmd: []string{"sh", "-c", script}, Grace: time.Second, Policy: fastPolicy(),
+			WatchFiles: []string{cert}, WatchEvery: 20 * time.Millisecond, OnChange: "hup",
+			Log: &logbuf, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+		})
+	}()
+
+	waitForLines(t, starts, 1)
+	replace(t, cert, "new")
+	waitForLines(t, hups, 1)
+	cancel()
+	<-done
+
+	if n := strings.Count(readFile(t, starts), "\n"); n != 1 {
+		t.Errorf("HUP must not restart the child, %d starts", n)
+	}
+	if !strings.Contains(logbuf.String(), "changed: "+cert+"; sending SIGHUP") {
+		t.Errorf("log: %s", logbuf.String())
+	}
+}
+
+func TestWatchedChangeRestartsWithoutWait(t *testing.T) {
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "cert.pem")
+	starts := filepath.Join(dir, "starts")
+	if err := os.WriteFile(cert, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := "echo >> " + starts + "; while :; do sleep 0.05; done"
+
+	// A long backoff would show if the restart were treated as a failure.
+	p := fastPolicy()
+	p.Initial, p.Max = time.Hour, time.Hour
+	p.GiveUp = 1
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var logbuf bytes.Buffer // read only after Run returned
+	done := make(chan int, 1)
+	go func() {
+		done <- Run(ctx, Options{
+			Cmd: []string{"sh", "-c", script}, Grace: time.Second, Policy: p,
+			WatchFiles: []string{cert}, WatchEvery: 20 * time.Millisecond, OnChange: "restart",
+			Log: &logbuf, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+		})
+	}()
+
+	waitForLines(t, starts, 1)
+	replace(t, cert, "new")
+	waitForLines(t, starts, 2)
+	// A second change: with -r 1 a counted restart would give up here.
+	replace(t, cert, "newer")
+	waitForLines(t, starts, 3)
+	cancel()
+	if code := <-done; code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	if !strings.Contains(logbuf.String(), "changed: "+cert+"; restarting") {
+		t.Errorf("log: %s", logbuf.String())
+	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}

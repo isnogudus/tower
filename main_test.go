@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -108,6 +109,46 @@ func TestParseArgsErrors(t *testing.T) {
 	for _, c := range cases {
 		if _, err := parseArgs(c); err == nil {
 			t.Errorf("%v: expected error", c)
+		}
+	}
+}
+
+func TestParseArgsWatch(t *testing.T) {
+	dir := t.TempDir()
+	cert := dir + "/cert.pem"
+	key := dir + "/key.pem"
+	for _, f := range []string{cert, key} {
+		if err := os.WriteFile(f, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	o, err := parseArgs([]string{"-W", cert, "-W", key, "-H", "hup", "-p", "30s", "--", "/bin/true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(o.WatchFiles, " ") != cert+" "+key {
+		t.Errorf("-W: %v", o.WatchFiles)
+	}
+	if o.OnChange != "hup" || o.WatchEvery != 30*time.Second {
+		t.Errorf("-H/-p: %q %v", o.OnChange, o.WatchEvery)
+	}
+
+	o, err = parseArgs([]string{"-W", cert, "/bin/true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.OnChange != "restart" || o.WatchEvery != time.Minute {
+		t.Errorf("defaults: -H %q -p %v, want restart 1m", o.OnChange, o.WatchEvery)
+	}
+
+	for _, args := range [][]string{
+		{"-W", dir + "/missing.pem", "/bin/true"},
+		{"-W", cert, "-H", "reload", "/bin/true"},
+		{"-W", cert, "-p", "0s", "/bin/true"},
+	} {
+		if _, err := parseArgs(args); err == nil {
+			t.Errorf("parseArgs(%q): expected an error", args)
 		}
 	}
 }

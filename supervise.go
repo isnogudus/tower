@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -24,14 +25,25 @@ type Options struct {
 	// reload). Optional.
 	Forward <-chan os.Signal
 
+	// WatchFiles are polled every WatchEvery; once a change has settled,
+	// the child gets SIGHUP (OnChange "hup") or is restarted without a
+	// wait (OnChange "restart"). Optional.
+	WatchFiles []string
+	WatchEvery time.Duration
+	OnChange   string
+
+	// changes delivers completed changes of WatchFiles (nil = no watch).
+	changes <-chan []string
+
 	Log            io.Writer // tower's own messages
 	Stdout, Stderr io.Writer // output of the child
 }
 
 type exitInfo struct {
-	code   int
-	signal string // name of the signal, if the child died of one
-	err    error  // an error that is not a normal exit (e.g. failed start)
+	code    int
+	signal  string // name of the signal, if the child died of one
+	err     error  // an error that is not a normal exit (e.g. failed start)
+	restart bool   // stopped by tower for a restart after a watched change
 }
 
 // Run starts the child and restarts it by the rules of the policy until
@@ -43,14 +55,30 @@ func Run(ctx context.Context, o Options) int {
 		fmt.Fprintf(o.Log, format+"\n", args...)
 	}
 	state := &State{}
+	if len(o.WatchFiles) > 0 {
+		o.changes = watchFiles(ctx, o.WatchFiles, o.WatchEvery)
+	}
 
 	for {
+		// A change that arrived while no child ran is already in effect for
+		// the child about to start.
+		select {
+		case <-o.changes:
+		default:
+		}
+
 		started := time.Now()
 		info := runOnce(ctx, o, logf)
 
 		if ctx.Err() != nil {
 			// A stop was requested; the child is gone.
 			return 0
+		}
+		if info.restart {
+			// Requested, not a failure: no wait, no count against -r, and
+			// the backoff starts over.
+			state.backoff = 0
+			continue
 		}
 		if info.err != nil {
 			// Failed to start: a configuration error, not a case for a
@@ -124,6 +152,19 @@ func runOnce(ctx context.Context, o Options, logf func(string, ...any)) exitInfo
 			if s, ok := sig.(syscall.Signal); ok {
 				_ = syscall.Kill(-pgid, s)
 			}
+		case files := <-o.changes:
+			changed := strings.Join(files, ", ")
+			if o.OnChange == "restart" {
+				logf("changed: %s; restarting pid=%d", changed, pgid)
+				terminate(pgid, o.Grace, done, logf)
+				flush(o.Stdout, o.Stderr)
+				return exitInfo{restart: true}
+			}
+			// To the child only, as rcctl reload does: the master of a
+			// service like dovecot or nginx reloads and handles its workers;
+			// what the workers make of a SIGHUP of their own is up to them.
+			logf("changed: %s; sending SIGHUP to pid=%d", changed, pgid)
+			_ = syscall.Kill(pgid, syscall.SIGHUP)
 		case <-ctx.Done():
 			terminate(pgid, o.Grace, done, logf)
 			flush(o.Stdout, o.Stderr)

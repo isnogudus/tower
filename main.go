@@ -21,7 +21,7 @@ import (
 
 const usage = `usage: tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
              [-r count] [-w window] [-t grace] [-l syslog|stderr] [-o inherit|syslog]
-             [-T tag] [--] command [args...]
+             [-T tag] [-W file ...] [-H hup|restart] [-p interval] [--] command [args...]
 
 tower runs command, restarts it when it dies, and gives up when told to.
 
@@ -39,6 +39,11 @@ tower runs command, restarts it when it dies, and gives up when told to.
   -o where    output of command: inherit tower's stdout/stderr, or line by
               line to syslog (default inherit)
   -T tag      syslog tag for -l and -o (default tower)
+  -W file     watch file, e.g. a certificate; may be given several times
+  -H action   on a change of a -W file: hup sends SIGHUP to command itself,
+              restart restarts it (default restart)
+  -p interval how often the -W files are checked; a change takes effect once
+              a check finds no further change (default 1m)
   -v          print version and exit
 
 tower ends with 0 after SIGTERM/SIGINT, with the command's exit code when it
@@ -72,8 +77,18 @@ func parseArgs(args []string) (cli, error) {
 		logTo    = fs.String("l", "syslog", "")
 		outTo    = fs.String("o", "inherit", "")
 		tag      = fs.String("T", "tower", "")
+		onChange = fs.String("H", "restart", "")
+		every    = fs.Duration("p", time.Minute, "")
 		showVer  = fs.Bool("v", false, "")
+		watch    []string
 	)
+	fs.Func("W", "", func(path string) error {
+		if path == "" {
+			return errors.New("empty path")
+		}
+		watch = append(watch, path)
+		return nil
+	})
 	if err := fs.Parse(args); err != nil {
 		return cli{}, err
 	}
@@ -110,6 +125,18 @@ func parseArgs(args []string) (cli, error) {
 	if *tag == "" {
 		return cli{}, errors.New("-T must not be empty")
 	}
+	if *onChange != "hup" && *onChange != "restart" {
+		return cli{}, errors.New("-H must be hup or restart")
+	}
+	if *every <= 0 {
+		return cli{}, errors.New("-p must be positive")
+	}
+	// A typo in a path would otherwise never fire.
+	for _, path := range watch {
+		if _, err := os.Stat(path); err != nil {
+			return cli{}, fmt.Errorf("-W: %w", err)
+		}
+	}
 
 	var cred *syscall.Credential
 	if *userName != "" {
@@ -126,6 +153,11 @@ func parseArgs(args []string) (cli, error) {
 			EnvDir: *envDir,
 			Cred:   cred,
 			Grace:  *grace,
+
+			WatchFiles: watch,
+			WatchEvery: *every,
+			OnChange:   *onChange,
+
 			Policy: Policy{
 				NoRestart: noRestart,
 				Initial:   *initial,

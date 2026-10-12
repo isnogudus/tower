@@ -32,6 +32,10 @@ is all tower does.
   runtime; syslog (facility `daemon`) by default. With `-o syslog` the
   child's output goes there too, line by line, and `-T` puts both under
   the service's name — no `logger` pipe, no `daemon -S`.
+- Watching files: `-W` names files such as a TLS certificate and its key;
+  once they have changed, tower sends SIGHUP to the service or restarts it
+  (`-H hup|restart`). Made for jails that get their certificates read-only
+  from the host — see below.
 - No dependencies outside the Go standard library. Static binary,
   cross-compiles for OpenBSD, FreeBSD and Linux with `make build-all`.
 
@@ -40,7 +44,7 @@ is all tower does.
 ```
 tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
       [-r count] [-w window] [-t grace] [-l syslog|stderr] [-o inherit|syslog]
-      [-T tag] [--] command [args...]
+      [-T tag] [-W file ...] [-H hup|restart] [-p interval] [--] command [args...]
 ```
 
 | Flag | Meaning | Default |
@@ -58,6 +62,9 @@ tower [-u user] [-c dir] [-e dir] [-x codes] [-b initial] [-m max] [-s stable]
 | `-l where` | tower's own messages to `syslog` or `stderr` | `syslog` |
 | `-o where` | output of the child: `inherit` tower's stdout/stderr, or line by line to `syslog` (`daemon.info`) | `inherit` |
 | `-T tag` | syslog tag for `-l` and `-o` | `tower` |
+| `-W file` | watch this file (may be repeated); it must exist at start | none |
+| `-H action` | on a change of a `-W` file: `hup` sends SIGHUP to the child itself (not its process group), `restart` restarts it | `restart` |
+| `-p interval` | how often the `-W` files are checked | `1m` |
 | `-v` | print version | |
 
 tower exits with `0` after SIGTERM/SIGINT, with the child's exit code when
@@ -72,6 +79,35 @@ start (`127`).
 The child runs in its own process group, so signals also reach
 grandchildren. A child killed by a signal counts as `128 + signal number`,
 as in the shell — exit `137` after SIGKILL is therefore restarted.
+
+## Watching certificates
+
+When one machine fetches the certificates and hands them to jails through
+read-only `nullfs` mounts, the services in the jails learn nothing of a
+renewal. tower closes the gap:
+
+```sh
+tower -T dovecot -o syslog -H hup \
+    -W /usr/local/etc/certs/fullchain.pem \
+    -W /usr/local/etc/certs/privkey.pem \
+    -- /usr/local/sbin/dovecot -F
+```
+
+- tower checks the files every `-p` (device, inode, size, mtime) with
+  `stat(2)` only. A change made by the host need not show up as a `kqueue`
+  or inotify event on a `nullfs` mount, and a file replaced with `rename(2)`
+  — as ACME clients install certificates — has a new inode.
+- A change takes effect once a check finds no further change and every
+  file exists, so a certificate and a key replaced one after the other
+  cause one reload, after both, if the second follows within one interval.
+  The delay is one to two intervals.
+- `-H hup` suits services whose master process reloads certificates on
+  SIGHUP (dovecot, postfix, nginx). The signal goes to the child itself, as
+  with `rcctl reload`, not to its process group as a forwarded SIGHUP does; `-H restart` stops the service and starts it
+  again at once. Such a restart is not a failure: no wait, no count against
+  `-r`, and the backoff starts over.
+- Mount the **directory** holding the certificates into the jail, not the
+  single files: a file mount stays bound to the old file after a rename.
 
 ## Example
 
