@@ -132,6 +132,17 @@ built by GitHub Actions for OpenBSD, FreeBSD and Linux (amd64, arm64,
 armv6), with a `SHA256SUMS` file. FreeBSD 14 and later keep manual pages in `share/man`:
 `make install MANDIR=/usr/local/share/man`.
 
+Every release file also carries a signed build provenance attestation
+(SLSA build level 2): it proves that the file was built by the release
+workflow of this repository from the tagged commit and has not been changed
+since. `SHA256SUMS` only shows that a download matches the uploaded file.
+Check a binary on your workstation before copying it to the router:
+
+```sh
+gh attestation verify tower-v1.0.0-openbsd-amd64 --repo isnogudus/tower \
+    --signer-workflow isnogudus/tower/.github/workflows/release.yml
+```
+
 The manual page is [`tower.8`](tower.8) in mdoc(7); `make man` checks it
 with mandoc and displays it.
 
