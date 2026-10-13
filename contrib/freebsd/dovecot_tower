@@ -1,0 +1,68 @@
+#!/bin/sh
+#
+# rc.d script for dovecot in a jail, supervised by tower (FreeBSD), with a
+# reload when the host installs new certificates.
+#
+# The host fetches the certificates and mounts their directory read-only
+# into the jail. Mount the directory, not the files: a file mount stays
+# bound to the old file once the host replaces it with rename(2). On the
+# host, in jail.conf:
+#   mount += "/usr/local/etc/certs/mail.example.com $path/usr/local/etc/certs nullfs ro 0 0";
+#
+# In the jail, copy this script to /usr/local/etc/rc.d/dovecot_tower and
+# set in /etc/rc.conf:
+#   dovecot_enable="NO"         # the port's script; tower runs dovecot now
+#   dovecot_tower_enable="YES"
+#   dovecot_tower_certs="/usr/local/etc/certs/fullchain.pem /usr/local/etc/certs/privkey.pem"
+#
+# The script has its own name so that a pkg upgrade of dovecot does not
+# overwrite it.
+#
+# dovecot runs in the foreground (-F) as the child of tower and drops its
+# privileges itself, so tower runs as root. Once the certificates have
+# changed and settled, tower sends SIGHUP to the dovecot master, which
+# rereads its configuration and certificates, like doveadm reload.
+#
+# PROVIDE: dovecot_tower
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="dovecot_tower"
+rcvar="dovecot_tower_enable"
+
+load_rc_config $name
+
+: ${dovecot_tower_enable:="NO"}
+: ${dovecot_tower_config:="/usr/local/etc/dovecot/dovecot.conf"}
+# Files to watch, separated by spaces; empty = no watching.
+: ${dovecot_tower_certs:=""}
+# Flags for tower itself: exit codes, giving up after ten restarts within
+# an hour (dovecot exits with its own codes on a configuration error, so
+# -x alone would not stop a restart loop), and the check interval.
+: ${dovecot_tower_flags:="-x 0,1 -r 10 -w 1h -p 1m"}
+
+pidfile="/var/run/${name}.pid"
+procname="/usr/local/sbin/tower"
+
+_watch=""
+for _f in ${dovecot_tower_certs}; do
+	_watch="${_watch} -W ${_f}"
+done
+
+# daemon(8) only detaches and writes the pid file (no -r); restarts are
+# done by tower, and -T/-o syslog sends the output of dovecot to syslog
+# under the name of the service.
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} ${procname} -T dovecot -o syslog ${dovecot_tower_flags} -H hup ${_watch} -- /usr/local/sbin/dovecot -F -c ${dovecot_tower_config}"
+
+extra_commands="reload"
+reload_cmd="dovecot_tower_reload"
+dovecot_tower_reload() {
+	# To the dovecot master only, not to the whole process group as a
+	# SIGHUP to tower would be.
+	/usr/local/bin/doveadm reload
+}
+
+run_rc_command "$1"

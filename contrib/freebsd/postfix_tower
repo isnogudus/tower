@@ -1,0 +1,71 @@
+#!/bin/sh
+#
+# rc.d script for postfix in a jail, supervised by tower (FreeBSD), with a
+# restart when the host installs new certificates.
+#
+# The host fetches the certificates and mounts their directory read-only
+# into the jail. Mount the directory, not the files: a file mount stays
+# bound to the old file once the host replaces it with rename(2). On the
+# host, in jail.conf:
+#   mount += "/usr/local/etc/certs/mail.example.com $path/usr/local/etc/certs nullfs ro 0 0";
+#
+# In the jail, copy this script to /usr/local/etc/rc.d/postfix_tower and
+# set in /etc/rc.conf:
+#   postfix_enable="NO"         # the port's script; tower runs postfix now
+#   postfix_tower_enable="YES"
+#   postfix_tower_certs="/usr/local/etc/certs/fullchain.pem /usr/local/etc/certs/privkey.pem"
+#
+# The script has its own name so that a pkg upgrade of postfix does not
+# overwrite it.
+#
+# "postfix start-fg" (Postfix 3.3 and later) keeps the master daemon in
+# the foreground; it refuses to run with multi-instance support enabled.
+# postfix drops its privileges itself, so tower runs as root.
+#
+# Changed certificates restart postfix (-H restart) instead of reloading
+# it: a reload has to reach the master daemon, and the child of tower is
+# the postfix command that starts it. A restart is short, does not count
+# against -r, and certificates change rarely.
+#
+# PROVIDE: postfix_tower
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="postfix_tower"
+rcvar="postfix_tower_enable"
+
+load_rc_config $name
+
+: ${postfix_tower_enable:="NO"}
+# Files to watch, separated by spaces; empty = no watching.
+: ${postfix_tower_certs:=""}
+# Flags for tower itself: exit codes, giving up after ten restarts within
+# an hour, so that a postfix that keeps dying shows up in service status,
+# and the check interval.
+: ${postfix_tower_flags:="-x 0,1 -r 10 -w 1h -p 1m"}
+
+pidfile="/var/run/${name}.pid"
+procname="/usr/local/sbin/tower"
+
+_watch=""
+for _f in ${postfix_tower_certs}; do
+	_watch="${_watch} -W ${_f}"
+done
+
+# daemon(8) only detaches and writes the pid file (no -r); restarts are
+# done by tower, and -T/-o syslog sends tower's messages and anything
+# postfix writes to stdout or stderr to syslog under the name of the
+# service. postfix logs to syslog itself, as configured in main.cf.
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} ${procname} -T postfix -o syslog ${postfix_tower_flags} -H restart ${_watch} -- /usr/local/sbin/postfix start-fg"
+
+extra_commands="reload"
+reload_cmd="postfix_tower_reload"
+postfix_tower_reload() {
+	# Reaches the master daemon through its pid file.
+	/usr/local/sbin/postfix reload
+}
+
+run_rc_command "$1"

@@ -109,6 +109,10 @@ tower -T dovecot -o syslog -H hup \
 - Mount the **directory** holding the certificates into the jail, not the
   single files: a file mount stays bound to the old file after a rename.
 
+See [`contrib/freebsd/dovecot_tower`](contrib/freebsd/dovecot_tower) and
+[`contrib/freebsd/postfix_tower`](contrib/freebsd/postfix_tower) for
+complete rc.d scripts.
+
 ## Example
 
 In the foreground, to try it out:
@@ -135,6 +139,15 @@ are in [`contrib/`](contrib/), for two services: `e3dc_mqtt`, a poller
 that exits with distinct codes for configuration and connection errors,
 and `dns_updater`, a daemon that does its own privilege drop
 and therefore runs under a root tower.
+
+For FreeBSD jails that get their certificates from the host,
+[`contrib/freebsd/dovecot_tower`](contrib/freebsd/dovecot_tower) and
+[`contrib/freebsd/postfix_tower`](contrib/freebsd/postfix_tower) run
+dovecot (`-F`, reloaded with `-H hup`) and postfix (`start-fg`, restarted
+with `-H restart`) under tower and watch the files named in
+`dovecot_tower_certs` and `postfix_tower_certs`. They carry their own
+names, so a `pkg upgrade` does not overwrite them; the ports' own scripts
+are disabled with `dovecot_enable="NO"` and `postfix_enable="NO"`.
 
 The rc.d script carries the service's name; tower itself only shows up in
 `ps` and in the log. Operation is as usual: `rcctl check e3dc_mqtt`,
